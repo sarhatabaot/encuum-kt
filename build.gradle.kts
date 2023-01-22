@@ -15,7 +15,7 @@ repositories {
 dependencies {
     testImplementation(kotlin("test"))
     // https://mvnrepository.com/artifact/com.microsoft.playwright/playwright
-    implementation("com.microsoft.playwright:playwright:1.28.1")
+    implementation("com.microsoft.playwright:playwright:1.29.0")
     // https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind
     implementation("com.fasterxml.jackson.core:jackson-databind:2.14.1")
     implementation("io.github.cdimascio:dotenv-kotlin:6.4.0")
@@ -33,7 +33,7 @@ tasks.test {
 }
 
 tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "11"
+    kotlinOptions.jvmTarget = "17"
 }
 
 application {

@@ -11,20 +11,34 @@ import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 
 data class PlaywrightInstance(
-    val pw: Playwright,
-    val lo: LaunchOptions,
-    val nco: NewContextOptions,
-    val bt: BrowserType,
-    val ctxt: BrowserContext,
-    val brow: Browser,
-    val pg: Page
+    val playwright: Playwright,
+    val launchOptions: LaunchOptions,
+    val newContextOptions: NewContextOptions,
+    val browserType: BrowserType,
+    val browserContext: BrowserContext,
+    val browser: Browser,
+    val page: Page
 )
+
+private fun login(page: Page, opts: ScrapeOpts) {
+    page.navigate("${opts.baseUrl}/login")
+    page.type("css=[name=username]", opts.username)
+    page.type("//input[@type='password']", opts.password)
+    page.click("//input[@type='submit' and @value='Login']")
+}
+
+private fun canScrapeThread(title: String, opts: ScrapeOpts): Boolean {
+    if(opts.allowThreads.isNotEmpty()) {
+        return opts.allowThreads.contains(title)
+    }
+    return !opts.ignoreThreads.contains(title)
+}
 
 fun scrape(opts: ScrapeOpts) {
     val rand = SecureRandom()
     val newPlaywright = {
         val npw = Playwright.create()
-        val nbt = npw.chromium()
+        val nbt = npw.firefox()
         val nlo = LaunchOptions().apply { headless = opts.headless; slowMo = 150.0 }
         val nnco = NewContextOptions().apply {
             ignoreHTTPSErrors = true
@@ -36,19 +50,20 @@ fun scrape(opts: ScrapeOpts) {
         val npg = nctxt.newPage()
         PlaywrightInstance(npw, nlo, nnco, nbt, nctxt, nbrowser, npg)
     }
+
     val threadLocal: ThreadLocal<PlaywrightInstance?> = ThreadLocal.withInitial { null }
     val threadFactory = ThreadFactory { r: Runnable ->
         val thr = Thread(r)
         //Close browsers if a thread dies
         thr.setUncaughtExceptionHandler { _, _ ->
-            threadLocal.get()?.brow?.close()
+            threadLocal.get()?.browser?.close()
         }
         thr
     }
     val workerPool = Executors.newFixedThreadPool(1, threadFactory)
     val pi = newPlaywright()
     threadLocal.set(pi) //For the main thread only, via the magic of ThreadLocal
-    val page = pi.pg
+    val page = pi.page
 
     val skipUnique = su@{ exec: () -> Unit ->
         try {
@@ -66,10 +81,7 @@ fun scrape(opts: ScrapeOpts) {
     }
 
     //Login
-    page.navigate("${opts.baseUrl}/login")
-    page.type("css=[name=username]", opts.username)
-    page.type("//input[@type='password']", opts.password)
-    page.click("//input[@type='submit' and @value='Login']")
+    login(page, opts)
 
     //Get the list of forums
     page.navigate("${opts.baseUrl}${opts.forumBase}")
@@ -84,7 +96,7 @@ fun scrape(opts: ScrapeOpts) {
     }
 
     //Steal the cookies from the logged-in page
-    val loggedInCookies = pi.ctxt.cookies()
+    val loggedInCookies = pi.browserContext.cookies()
 
     //Go through each forum and extract all the thread links
     val postContentsRx = """^\s*\[quote=@[0-9]+]\s*(.*)\s*\[/quote]\s*$""".toRegex(RegexOption.DOT_MATCHES_ALL)
@@ -95,6 +107,11 @@ fun scrape(opts: ScrapeOpts) {
 
     for (forum in forums!!) {
         //Go to the forum's first page of the list of threads
+        if(!canScrapeThread(forum.title, opts)) {
+            println("Detected ignored or not allowed thread ${forum.title}")
+            continue
+        }
+
         page.navigate(forum.url)
 
         val pagedLoop = { thePage: Page, extractor: (Int) -> Unit ->
@@ -114,7 +131,7 @@ fun scrape(opts: ScrapeOpts) {
                 extractor(pageNum)
                 pageNum++
             } while (nextArrowGetter())
-            println("We're done in a pagedLoop after ${pageNum-1}")
+            println("We're done in a pagedLoop after ${pageNum - 1}")
         }
 
         pagedLoop(page) { pageNum: Int ->
@@ -148,8 +165,8 @@ fun scrape(opts: ScrapeOpts) {
                 //We only create a new playwright browser if the thread doesn't already have one
                 val threadPi = threadLocal.get() ?: newPlaywright()
                 threadLocal.set(threadPi)
-                val threadPage = threadPi.pg
-                val threadCtxt = threadPi.ctxt
+                val threadPage = threadPi.page
+                val threadCtxt = threadPi.browserContext
                 threadCtxt.addCookies(loggedInCookies)
 
                 threadPage.waitForTimeout((1000 + rand.nextLong(1000, 27000)).toDouble())

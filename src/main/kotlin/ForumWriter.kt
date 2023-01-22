@@ -9,7 +9,7 @@ import java.io.IOException
 
 object DB {
     val db by lazy {
-        Database.connect(url = "jdbc:sqlite:forum.db", databaseConfig = DatabaseConfig{ useNestedTransactions = true })
+        Database.connect(url = "jdbc:sqlite:forum.db", databaseConfig = DatabaseConfig { useNestedTransactions = true })
     }
 }
 
