@@ -22,16 +22,14 @@ data class PlaywrightInstance(
 
 private fun login(page: Page, opts: ScrapeOpts) {
     page.navigate("${opts.baseUrl}/login")
+    println(opts.username)
     page.type("css=[name=username]", opts.username)
     page.type("//input[@type='password']", opts.password)
     page.click("//input[@type='submit' and @value='Login']")
 }
 
-private fun canScrapeThread(title: String, opts: ScrapeOpts): Boolean {
-    if(opts.allowThreads.isNotEmpty()) {
-        return opts.allowThreads.contains(title)
-    }
-    return !opts.ignoreThreads.contains(title)
+private fun cantScrapeThread(title: String, opts: ScrapeOpts): Boolean {
+    return opts.ignoreThreads.contains(title)
 }
 
 fun scrape(opts: ScrapeOpts) {
@@ -107,7 +105,7 @@ fun scrape(opts: ScrapeOpts) {
 
     for (forum in forums!!) {
         //Go to the forum's first page of the list of threads
-        if(!canScrapeThread(forum.title, opts)) {
+        if(cantScrapeThread(forum.title, opts)) {
             println("Detected ignored or not allowed thread ${forum.title}")
             continue
         }
